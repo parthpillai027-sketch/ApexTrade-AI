@@ -14,7 +14,14 @@ import {
   getClientMarketData, 
   getClientPrediction, 
   getClientOrderbook, 
-  getClientBacktest 
+  getClientBacktest,
+  getClientPortfolio,
+  placeClientOrder,
+  closeClientPosition,
+  toggleClientAutoPilot,
+  resetClientPortfolio,
+  triggerClientKillSwitch,
+  getClientLiveTick
 } from './clientFallback';
 
 const QUICK_TICKERS = ["AAPL", "NVDA", "TSLA", "MSFT", "BTC-USD", "ETH-USD", "SPY", "QQQ"];
@@ -26,9 +33,12 @@ const TIMEFRAME_PRESETS = [
   { label: "1Y", period: "1y", interval: "1d", desc: "1-Year Daily" },
   { label: "5Y", period: "5y", interval: "1wk", desc: "5-Year Macro Weekly" },
 ];
-const API_BASE = (typeof window !== 'undefined' && window.location && window.location.hostname)
-  ? `http://${window.location.hostname}:5001`
-  : "http://localhost:5001";
+
+const IS_PUBLIC_DEMO = typeof window !== 'undefined' && 
+  (window.location.hostname.includes("github.io") || 
+  (!window.location.hostname.includes("localhost") && !window.location.hostname.includes("127.0.0.1")));
+
+const API_BASE = IS_PUBLIC_DEMO ? "" : "http://localhost:5001";
 
 export default function App() {
   const [symbol, setSymbol] = useState("AAPL");
@@ -113,6 +123,17 @@ export default function App() {
   const loadMarketData = async (targetSymbol = symbol, targetPeriod = period, targetInterval = barInterval) => {
     setLoadingMarket(true);
     setErrorMsg("");
+
+    if (IS_PUBLIC_DEMO) {
+      const fallbackData = getClientMarketData(targetSymbol, targetPeriod, targetInterval);
+      setMarketData(fallbackData);
+      setOrderbook(getClientOrderbook(targetSymbol, fallbackData.info.price));
+      setPrediction(getClientPrediction(targetSymbol, fallbackData.info.price, model, horizon, threshold));
+      setPortfolio(getClientPortfolio({ [targetSymbol]: fallbackData.info.price }));
+      setLoadingMarket(false);
+      return;
+    }
+
     try {
       const res = await fetch(`${API_BASE}/api/market-data?symbol=${targetSymbol}&period=${targetPeriod}&interval=${targetInterval}`);
       const data = await res.json();
@@ -133,6 +154,7 @@ export default function App() {
       setMarketData(fallbackData);
       setOrderbook(getClientOrderbook(targetSymbol, fallbackData.info.price));
       setPrediction(getClientPrediction(targetSymbol, fallbackData.info.price, model, horizon, threshold));
+      setPortfolio(getClientPortfolio({ [targetSymbol]: fallbackData.info.price }));
     } finally {
       setLoadingMarket(false);
     }
@@ -140,6 +162,10 @@ export default function App() {
 
   // 2. Fetch Orderbook
   const fetchOrderbook = async (targetSymbol = symbol) => {
+    if (IS_PUBLIC_DEMO) {
+      setOrderbook(getClientOrderbook(targetSymbol, currentPrice || 200.0));
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/api/orderbook?symbol=${targetSymbol}`);
       const data = await res.json();
@@ -154,6 +180,11 @@ export default function App() {
     s = symbol, p = period, i = barInterval, m = model, h = horizon, th = threshold
   ) => {
     setLoadingPredict(true);
+    if (IS_PUBLIC_DEMO) {
+      setPrediction(getClientPrediction(s, currentPrice || 200.0, m, h, th));
+      setLoadingPredict(false);
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/api/predict`, {
         method: 'POST',
@@ -174,6 +205,11 @@ export default function App() {
   // 4. Run Backtest
   const handleRunBacktest = async () => {
     setLoadingBacktest(true);
+    if (IS_PUBLIC_DEMO) {
+      setBacktestData(getClientBacktest(symbol, model));
+      setLoadingBacktest(false);
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/api/backtest`, {
         method: 'POST',
@@ -193,6 +229,10 @@ export default function App() {
 
   // 5. Portfolio Operations
   const fetchPortfolio = async (s = symbol) => {
+    if (IS_PUBLIC_DEMO) {
+      setPortfolio(getClientPortfolio({ [s]: currentPrice || 200.0 }));
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/api/portfolio?symbol=${s}`);
       const data = await res.json();
@@ -200,72 +240,120 @@ export default function App() {
         setPortfolio(data.portfolio);
       }
     } catch (err) {
-      console.error("Portfolio fetch error:", err);
+      setPortfolio(getClientPortfolio({ [s]: currentPrice || 200.0 }));
     }
   };
 
   const handlePlaceOrder = async (orderData) => {
-    const res = await fetch(`${API_BASE}/api/portfolio/order`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(orderData)
-    });
-    const data = await res.json();
-    if (!data.success) {
-      throw new Error(data.error || "Failed to execute order");
+    if (IS_PUBLIC_DEMO) {
+      const res = placeClientOrder(orderData, currentPrice);
+      setPortfolio(res.portfolio);
+      return res;
     }
-    if (data.portfolio) {
-      setPortfolio(data.portfolio);
+    try {
+      const res = await fetch(`${API_BASE}/api/portfolio/order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(orderData)
+      });
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error || "Failed to execute order");
+      }
+      if (data.portfolio) {
+        setPortfolio(data.portfolio);
+      }
+      return data;
+    } catch (err) {
+      const res = placeClientOrder(orderData, currentPrice);
+      setPortfolio(res.portfolio);
+      return res;
     }
-    return data;
   };
 
   // CRITICAL FIX: Cross-Ticker Price Contamination Fix
   // Sends posId and posSymbol; server resolves and verifies authentic price for posSymbol
   const handleClosePosition = async (posId, posSymbol, reason = "Manual Exit") => {
-    const res = await fetch(`${API_BASE}/api/portfolio/close`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pos_id: posId, symbol: posSymbol, reason })
-    });
-    const data = await res.json();
-    if (!data.success) {
-      throw new Error(data.error || "Failed to close position");
+    if (IS_PUBLIC_DEMO) {
+      const res = closeClientPosition(posId, posSymbol, currentPrice, reason);
+      setPortfolio(res.portfolio);
+      return res;
     }
-    if (data.portfolio) {
-      setPortfolio(data.portfolio);
+    try {
+      const res = await fetch(`${API_BASE}/api/portfolio/close`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pos_id: posId, symbol: posSymbol, reason })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error || "Failed to close position");
+      }
+      if (data.portfolio) {
+        setPortfolio(data.portfolio);
+      }
+      return data;
+    } catch (err) {
+      const res = closeClientPosition(posId, posSymbol, currentPrice, reason);
+      setPortfolio(res.portfolio);
+      return res;
     }
-    return data;
   };
 
   const handleToggleAutoPilot = async (enabled, backtestMetrics = null) => {
-    const res = await fetch(`${API_BASE}/api/portfolio/auto-pilot`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled, metrics: backtestMetrics })
-    });
-    const data = await res.json();
-    if (!data.success) {
-      alert(data.error || "Auto-Pilot cannot be engaged.");
+    if (IS_PUBLIC_DEMO) {
+      const res = toggleClientAutoPilot(enabled);
+      setPortfolio(res.portfolio);
       return;
     }
-    if (data.auto_pilot !== undefined) {
-      setPortfolio(prev => prev ? { ...prev, auto_pilot: data.auto_pilot } : prev);
+    try {
+      const res = await fetch(`${API_BASE}/api/portfolio/auto-pilot`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled, metrics: backtestMetrics })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        alert(data.error || "Auto-Pilot cannot be engaged.");
+        return;
+      }
+      if (data.auto_pilot !== undefined) {
+        setPortfolio(prev => prev ? { ...prev, auto_pilot: data.auto_pilot } : prev);
+      }
+    } catch (err) {
+      const res = toggleClientAutoPilot(enabled);
+      setPortfolio(res.portfolio);
     }
   };
 
   const handleResetPortfolio = async () => {
-    const res = await fetch(`${API_BASE}/api/portfolio/reset`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    });
-    const data = await res.json();
-    if (data.success && data.portfolio) {
-      setPortfolio(data.portfolio);
+    if (IS_PUBLIC_DEMO) {
+      const res = resetClientPortfolio();
+      setPortfolio(res.portfolio);
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/portfolio/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.success && data.portfolio) {
+        setPortfolio(data.portfolio);
+      }
+    } catch (err) {
+      const res = resetClientPortfolio();
+      setPortfolio(res.portfolio);
     }
   };
 
   const handleTriggerKillSwitch = async () => {
+    if (IS_PUBLIC_DEMO) {
+      const res = triggerClientKillSwitch();
+      setPortfolio(res.portfolio);
+      alert("EMERGENCY KILL SWITCH ENGAGED: All open positions have been closed and Auto-Pilot is halted.");
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/api/risk/kill-switch`, {
         method: 'POST',
@@ -278,7 +366,9 @@ export default function App() {
       }
       alert("EMERGENCY KILL SWITCH ENGAGED: All open positions have been closed and Auto-Pilot is halted.");
     } catch (err) {
-      alert("Failed to trigger kill switch: " + err.message);
+      const res = triggerClientKillSwitch();
+      setPortfolio(res.portfolio);
+      alert("EMERGENCY KILL SWITCH ENGAGED: All open positions have been closed and Auto-Pilot is halted.");
     }
   };
 
@@ -308,6 +398,58 @@ export default function App() {
       const lastCandle = currMD.candles[currMD.candles.length - 1];
       const shouldRepredict = (currentTicks % 3 === 0);
 
+      const processTickData = (data) => {
+        if (!data || !data.success) return;
+        const dir = data.tick_delta >= 0 ? "up" : "down";
+        setTickDirection(dir);
+        setTimeout(() => setTickDirection(null), 600);
+
+        setTickCount(prev => prev + 1);
+        setTicksUntilAiSync(prev => (prev <= 1 ? 3 : prev - 1));
+
+        setMarketData(prev => {
+          if (!prev || !prev.candles || prev.candles.length === 0) return prev;
+          const newCandles = [...prev.candles];
+          newCandles[newCandles.length - 1] = {
+            ...newCandles[newCandles.length - 1],
+            ...data.candle
+          };
+
+          const prevBasePrice = prev.info?.price ? (prev.info.price - (prev.info.change_24h || 0)) : data.price;
+          const newChange = data.price - prevBasePrice;
+          const newChangePct = prevBasePrice > 0 ? (newChange / prevBasePrice) * 100 : 0;
+
+          return {
+            ...prev,
+            candles: newCandles,
+            info: {
+              ...prev.info,
+              price: data.price,
+              change_24h: newChange,
+              change_pct_24h: newChangePct
+            }
+          };
+        });
+
+        if (data.orderbook) setOrderbook(data.orderbook);
+        if (data.prediction) setPrediction(data.prediction);
+        if (data.portfolio) setPortfolio(data.portfolio);
+      };
+
+      if (IS_PUBLIC_DEMO) {
+        const data = getClientLiveTick(
+          currSymbol,
+          lastCandle.close,
+          lastCandle,
+          currModel,
+          currHorizon,
+          currThreshold,
+          shouldRepredict
+        );
+        processTickData(data);
+        return;
+      }
+
       try {
         const res = await fetch(`${API_BASE}/api/live-tick`, {
           method: 'POST',
@@ -324,52 +466,18 @@ export default function App() {
           })
         });
         const data = await res.json();
-        if (data.success) {
-          const dir = data.tick_delta >= 0 ? "up" : "down";
-          setTickDirection(dir);
-          setTimeout(() => setTickDirection(null), 600);
-
-          setTickCount(prev => prev + 1);
-          setTicksUntilAiSync(prev => (prev <= 1 ? 3 : prev - 1));
-
-          setMarketData(prev => {
-            if (!prev || !prev.candles || prev.candles.length === 0) return prev;
-            const newCandles = [...prev.candles];
-            newCandles[newCandles.length - 1] = {
-              ...newCandles[newCandles.length - 1],
-              ...data.candle
-            };
-
-            const prevBasePrice = prev.info?.price ? (prev.info.price - (prev.info.change_24h || 0)) : data.price;
-            const newChange = data.price - prevBasePrice;
-            const newChangePct = prevBasePrice > 0 ? (newChange / prevBasePrice) * 100 : 0;
-
-            return {
-              ...prev,
-              candles: newCandles,
-              info: {
-                ...prev.info,
-                price: data.price,
-                change_24h: newChange,
-                change_pct_24h: newChangePct
-              }
-            };
-          });
-
-          if (data.orderbook) {
-            setOrderbook(data.orderbook);
-          }
-
-          if (data.prediction) {
-            setPrediction(data.prediction);
-          }
-
-          if (data.portfolio) {
-            setPortfolio(data.portfolio);
-          }
-        }
+        processTickData(data);
       } catch (err) {
-        console.error("Live tick sync error:", err);
+        const data = getClientLiveTick(
+          currSymbol,
+          lastCandle.close,
+          lastCandle,
+          currModel,
+          currHorizon,
+          currThreshold,
+          shouldRepredict
+        );
+        processTickData(data);
       }
     }, tickSpeed);
 
