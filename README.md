@@ -343,8 +343,6 @@ cd frontend && npm run build
 - **Developer**: **Parth / ApexTrade AI**
 - **GitHub**: [@Lysophere1](https://github.com/Lysophere1)
 - **Role**: Full-Stack AI & Quantitative Software Engineer
-- **Project**: Student Portfolio Capstone Project
-- **Contact**: `developer@apextrade.ai` • [LinkedIn](https://www.linkedin.com/)
 
 ---
 
