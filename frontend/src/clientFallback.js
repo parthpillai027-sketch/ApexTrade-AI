@@ -159,6 +159,8 @@ export function getClientMarketData(symbol = "AAPL", period = "6mo", interval = 
 
   const lastCandle = candles[candles.length - 1];
   const lastClose = lastCandle.close;
+  const change24h = parseFloat((lastClose - basePrice).toFixed(2));
+  const changePct24h = parseFloat((((lastClose - basePrice) / basePrice) * 100).toFixed(2));
 
   return {
     success: true,
@@ -169,16 +171,18 @@ export function getClientMarketData(symbol = "AAPL", period = "6mo", interval = 
       symbol,
       short_name: symbol,
       price: lastClose,
-      change_24h: parseFloat((lastClose - basePrice).toFixed(2)),
-      change_24h_pct: parseFloat((((lastClose - basePrice) / basePrice) * 100).toFixed(2)),
+      base_price: basePrice,
+      change_24h: change24h,
+      change_24h_pct: changePct24h,
+      change_pct_24h: changePct24h,
       volume: 48500000,
       market_cap: 3200000000000
     },
     quote: {
       symbol,
       regularMarketPrice: lastClose,
-      regularMarketChange: parseFloat((lastClose - basePrice).toFixed(2)),
-      regularMarketChangePercent: parseFloat((((lastClose - basePrice) / basePrice) * 100).toFixed(2)),
+      regularMarketChange: change24h,
+      regularMarketChangePercent: changePct24h,
       currency: "USD",
       exchange: isCrypto ? "Crypto" : "NASDAQ"
     },
@@ -197,10 +201,11 @@ export function getClientMarketData(symbol = "AAPL", period = "6mo", interval = 
 // -------------------------------------------------------------------------
 export function getClientPrediction(symbol, lastClose, model = "Lion", horizon = 15, threshold = 65) {
   const isLion = model === "Lion";
-  const bias = isLion ? "Bullish" : (Math.random() > 0.4 ? "Bullish" : "Bearish");
+  const bias = isLion ? "Bullish" : (Math.random() > 0.35 ? "Bullish" : "Bearish");
   const confidence = isLion ? 79.4 : 74.5;
   const returnPct = bias === "Bullish" ? 4.95 : -3.80;
   const targetPrice = parseFloat((lastClose * (1 + returnPct / 100)).toFixed(2));
+  const probLoss = bias === "Bullish" ? 0.24 : 0.28;
 
   const future_candles = [];
   let curr = lastClose;
@@ -232,14 +237,31 @@ export function getClientPrediction(symbol, lastClose, model = "Lion", horizon =
     model_name: isLion ? "🦁 Lion (LSTM Trajectory)" : "🐯 Tiger (Breakout Gate)",
     directional_bias: bias,
     confidence: confidence,
+    confidence_score: confidence,
+    bullish_probability: bias === "Bullish" ? 0.79 : 0.25,
+    bearish_probability: bias === "Bullish" ? 0.21 : 0.75,
     target_price: targetPrice,
     expected_return_pct: returnPct,
+    expected_return_range: bias === "Bullish" ? { min: 2.15, max: 6.80 } : { min: -1.80, max: -5.40 },
+    probability_of_loss: probLoss,
+    risk_reward_ratio: isLion ? 2.4 : 2.1,
+    forecast_horizon_time: `${horizon} candles`,
+    trade_decision: confidence >= threshold ? (bias === "Bullish" ? "BUY" : "SELL") : "DO NOT TRADE",
+    trade_rationale: isLion 
+      ? `Lion Multi-Step LSTM projects consistent ${bias.toUpperCase()} sequence continuation to $${targetPrice}.`
+      : `Tiger Breakout Gate confirms elevated conviction (${confidence}%) above threshold ${threshold}%.`,
     current_price: lastClose,
     move_coverage: isLion ? 82.4 : 85.1,
     threshold_exceeded: confidence >= threshold,
     summary: isLion 
       ? `Lion Deep LSTM projects ${bias.toUpperCase()} sequence continuation to $${targetPrice} (${returnPct > 0 ? '+' : ''}${returnPct}%).`
       : `Tiger [TRIGGERED] - High conviction setup (${confidence}%). Threshold: ${threshold}%. Target: $${targetPrice}.`,
+    feature_drivers: [
+      { feature: "Multi-Candle Momentum", impact: "Bullish", description: "Deep sequence trajectory indicates positive rate of change across prior 30 bars." },
+      { feature: "RSI Momentum Slope", impact: "Bullish", description: "Healthy oscillator accumulation without entering overbought territory (>70)." },
+      { feature: "DoM Liquidity Pressure", impact: "Bullish", description: "Heavy bid resting density provides strong institutional absorption floor." },
+      { feature: "Bollinger Volatility Squeeze", impact: "Neutral", description: "Band width contraction preceded by expanding volatility envelope." }
+    ],
     future_candles
   };
 }
@@ -504,11 +526,16 @@ export function triggerClientKillSwitch() {
 // 7. Continuous Live Market Tick Engine (Heartbeat)
 // -------------------------------------------------------------------------
 export function getClientLiveTick(symbol, currentPrice, candle, model = "Lion", horizon = 15, threshold = 65, repredict = false) {
-  // Drift micro-tick
-  const delta = parseFloat(((Math.random() - 0.49) * 0.0016 * currentPrice).toFixed(2));
+  // Drift micro-tick: ensure non-zero for visible tick animation
+  const rawDrift = (Math.random() - 0.48) * 0.002 * currentPrice;
+  const delta = parseFloat((Math.abs(rawDrift) < 0.05 ? (rawDrift >= 0 ? 0.08 : -0.08) : rawDrift).toFixed(2));
   const newPrice = parseFloat(Math.max(1, currentPrice + delta).toFixed(2));
 
-  // Update current active candle
+  const basePrice = TICKER_PRICES[symbol] || 150.0;
+  const change24h = parseFloat((newPrice - basePrice).toFixed(2));
+  const changePct24h = parseFloat((((newPrice - basePrice) / basePrice) * 100).toFixed(2));
+
+  // Update current active candle preserving indicator overlay properties
   const updatedCandle = {
     ...candle,
     close: newPrice,
@@ -576,6 +603,15 @@ export function getClientLiveTick(symbol, currentPrice, candle, model = "Lion", 
     candle: updatedCandle,
     orderbook,
     prediction,
-    portfolio: updatedPortfolio
+    portfolio: updatedPortfolio,
+    info: {
+      symbol,
+      short_name: symbol,
+      price: newPrice,
+      base_price: basePrice,
+      change_24h: change24h,
+      change_pct_24h: changePct24h,
+      change_24h_pct: changePct24h
+    }
   };
 }

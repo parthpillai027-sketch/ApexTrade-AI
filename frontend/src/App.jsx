@@ -415,15 +415,16 @@ export default function App() {
             ...data.candle
           };
 
-          const prevBasePrice = prev.info?.price ? (prev.info.price - (prev.info.change_24h || 0)) : data.price;
-          const newChange = data.price - prevBasePrice;
-          const newChangePct = prevBasePrice > 0 ? (newChange / prevBasePrice) * 100 : 0;
+          const prevBasePrice = prev.info?.base_price || (prev.info?.price ? (prev.info.price - (prev.info.change_24h || 0)) : data.price);
+          const newChange = data.info?.change_24h ?? (data.price - prevBasePrice);
+          const newChangePct = data.info?.change_pct_24h ?? (prevBasePrice > 0 ? (newChange / prevBasePrice) * 100 : 0);
 
           return {
             ...prev,
             candles: newCandles,
             info: {
               ...prev.info,
+              ...(data.info || {}),
               price: data.price,
               change_24h: newChange,
               change_pct_24h: newChangePct
