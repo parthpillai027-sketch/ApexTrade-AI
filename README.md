@@ -346,7 +346,7 @@ cd frontend && npm run build
 
 - **Developer**: **Parth / ApexTrade AI**
 - **GitHub**: [@parthpillai027-sketch](https://github.com/parthpillai027-sketch)
-- **Role**: Full-Stack AI & Quantitative Software Engineer
+- **Role**: BSc. Data Science Student
 
 ---
 
