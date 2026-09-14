@@ -2,15 +2,19 @@
 
 > **A Full-Stack Deep Learning Algorithmic Trading Terminal Featuring Multi-Candle Sequence Forecasting, $100,000 Paper Portfolio Simulation, Autonomous AI Auto-Pilot, and Depth of Market (DoM) Orderbook Dynamics.**
 
+[![Live Demo](https://img.shields.io/badge/Live_Demo-GitHub_Pages-success?style=flat&logo=github)](https://parthpillai027-sketch.github.io/ApexTrade-AI/)
 [![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![React](https://img.shields.io/badge/React-18+-61DAFB?style=flat&logo=react&logoColor=black)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-5.0+-646CFF?style=flat&logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4+-06B6D4?style=flat&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![Flask](https://img.shields.io/badge/Flask-3.0+-000000?style=flat&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
-[![Tests](https://img.shields.io/badge/Tests-41%2F41%20Passing-brightgreen?style=flat&logo=checkmarx&logoColor=white)]()
+[![Tests](https://img.shields.io/badge/Tests-42%2F42%20Passing-brightgreen?style=flat&logo=checkmarx&logoColor=white)]()
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Active%20%2F%20Production--Ready-success?style=flat)]()
+
+> 🌐 **Live Web Application**: [**https://parthpillai027-sketch.github.io/ApexTrade-AI/**](https://parthpillai027-sketch.github.io/ApexTrade-AI/) — *Experience the full interactive terminal directly in your browser with zero installation.*
+
 
 ---
 

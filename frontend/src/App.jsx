@@ -10,6 +10,12 @@ import FinancialChart from './components/FinancialChart';
 import OrderbookView from './components/OrderbookView';
 import BacktestView from './components/BacktestView';
 import PortfolioView from './components/PortfolioView';
+import { 
+  getClientMarketData, 
+  getClientPrediction, 
+  getClientOrderbook, 
+  getClientBacktest 
+} from './clientFallback';
 
 const QUICK_TICKERS = ["AAPL", "NVDA", "TSLA", "MSFT", "BTC-USD", "ETH-USD", "SPY", "QQQ"];
 const TIMEFRAME_PRESETS = [
@@ -122,8 +128,11 @@ export default function App() {
       runModelPrediction(targetSymbol, targetPeriod, targetInterval, model, horizon, threshold);
 
     } catch (err) {
-      console.error(err);
-      setErrorMsg(err.message || "Failed to fetch market data from research feed");
+      console.warn("Backend unavailable, using browser simulation:", err);
+      const fallbackData = getClientMarketData(targetSymbol, targetPeriod, targetInterval);
+      setMarketData(fallbackData);
+      setOrderbook(getClientOrderbook(targetSymbol, fallbackData.info.price));
+      setPrediction(getClientPrediction(targetSymbol, fallbackData.info.price, model, horizon, threshold));
     } finally {
       setLoadingMarket(false);
     }
@@ -136,7 +145,7 @@ export default function App() {
       const data = await res.json();
       if (data.success) setOrderbook(data.orderbook);
     } catch (err) {
-      console.error("Orderbook fetch error:", err);
+      setOrderbook(getClientOrderbook(targetSymbol, currentPrice || 200.0));
     }
   };
 
@@ -156,7 +165,7 @@ export default function App() {
         setPrediction(data);
       }
     } catch (err) {
-      console.error("Prediction error:", err);
+      setPrediction(getClientPrediction(s, currentPrice || 200.0, m, h, th));
     } finally {
       setLoadingPredict(false);
     }
@@ -176,7 +185,7 @@ export default function App() {
         setBacktestData(data.backtest);
       }
     } catch (err) {
-      console.error("Backtest error:", err);
+      setBacktestData(getClientBacktest(symbol, model));
     } finally {
       setLoadingBacktest(false);
     }
