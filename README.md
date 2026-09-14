@@ -345,7 +345,7 @@ cd frontend && npm run build
 ## 👤 Author & Developer Information
 
 - **Developer**: **Parth / ApexTrade AI**
-- **GitHub**: [@Lysophere1](https://github.com/Lysophere1)
+- **GitHub**: [@parthpillai027-sketch](https://github.com/parthpillai027-sketch)
 - **Role**: Full-Stack AI & Quantitative Software Engineer
 
 ---
